@@ -81,6 +81,9 @@ def _print_summary(name: str, accum, retire, profile) -> None:
     print(f"  [Accumulation]")
     print(f"  Age               {int(accum.iloc[0]['Age'])} → {int(a_last['Age'])}")
     print(f"  Final salary      ${a_last['Gross Salary']:>12,.0f}")
+    take_home = accum["Net Take-Home"]
+    print(f"  Take-home (first) ${take_home.iloc[0]:>12,.0f}")
+    print(f"  Take-home (last)  ${take_home.iloc[-1]:>12,.0f}")
     print(f"  Traditional       ${a_last['Traditional Balance']:>12,.0f}")
     print(f"  Roth              ${a_last['Roth Balance']:>12,.0f}")
     print(f"  Total (nominal)   ${a_last['Total Balance']:>12,.0f}")
@@ -91,9 +94,9 @@ def _print_summary(name: str, accum, retire, profile) -> None:
         print(f"  [Retirement — through age {profile.end_age}]")
         print(f"  Remaining balance ${r_last['Total Balance']:>12,.0f}")
         net = retire["Net Withdrawal"]
-        print(f"  Avg net/year      ${net.mean():>12,.0f}")
-        print(f"  Min net/year      ${net.min():>12,.0f}")
-        print(f"  Max net/year      ${net.max():>12,.0f}")
+        print(f"  Avg take-home/yr  ${net.mean():>12,.0f}")
+        print(f"  Min take-home/yr  ${net.min():>12,.0f}")
+        print(f"  Max take-home/yr  ${net.max():>12,.0f}")
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print()
 

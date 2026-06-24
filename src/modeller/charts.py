@@ -283,7 +283,7 @@ def compare_net_withdrawal(scenarios: Scenarios) -> go.Figure:
             showlegend=False,
             line=dict(color=color, width=2),
             customdata=retire["Age"],
-            hovertemplate=f"{name}<br>Year %{{x}} (Age %{{customdata}})<br>Net: $%{{y:,.0f}}<extra></extra>",
+            hovertemplate=f"{name}<br>Year %{{x}} (Age %{{customdata}})<br>Take-Home: $%{{y:,.0f}}<extra></extra>",
         ))
         if profile.account_for_inflation:
             fig.add_trace(go.Scatter(
@@ -294,10 +294,10 @@ def compare_net_withdrawal(scenarios: Scenarios) -> go.Figure:
                 showlegend=False,
                 line=dict(color=color, width=1, dash="dash"),
                 customdata=retire["Age"],
-                hovertemplate=f"{name} (Real)<br>Year %{{x}} (Age %{{customdata}})<br>Real Net: $%{{y:,.0f}}<extra></extra>",
+                hovertemplate=f"{name} (Real)<br>Year %{{x}} (Age %{{customdata}})<br>Take-Home (Real): $%{{y:,.0f}}<extra></extra>",
             ))
     fig.update_layout(
-        title="Net Annual Withdrawal After Tax",
+        title="Annual Retirement Take-Home Income",
         xaxis_title="Year",
         yaxis_title="Amount",
         yaxis_tickformat="$,.0f",
@@ -343,7 +343,7 @@ def compare_dashboard(scenarios: Scenarios) -> go.Figure:
         subplot_titles=(
             "Accumulation Balance",
             "Annual Contributions",
-            "Net Annual Withdrawal After Tax",
+            "Annual Retirement Take-Home Income",
             "Retirement Balance",
         ),
         vertical_spacing=0.08,
@@ -384,18 +384,18 @@ def retirement_income(retire: pd.DataFrame, profile: Profile) -> go.Figure:
     fig.add_trace(go.Scatter(
         x=retire.index,
         y=retire["Net Withdrawal"],
-        name="Net Withdrawal (After Tax)",
+        name="Take-Home Income",
         fill="tonexty",
         fillcolor="rgba(244, 67, 54, 0.15)",
         line=dict(color="#4CAF50", width=2),
         customdata=retire["Age"],
-        hovertemplate="Year %{x} (Age %{customdata})<br>Net: $%{y:,.0f}<extra></extra>",
+        hovertemplate="Year %{x} (Age %{customdata})<br>Take-Home: $%{y:,.0f}<extra></extra>",
     ))
     if profile.account_for_inflation:
         fig.add_trace(go.Scatter(
             x=retire.index,
             y=retire["Real Net Withdrawal"],
-            name="Net (Today's $)",
+            name="Take-Home (Today's $)",
             line=dict(color="#4CAF50", width=1, dash="dash"),
             customdata=retire["Age"],
             hovertemplate="Year %{x} (Age %{customdata})<br>Real Net: $%{y:,.0f}<extra></extra>",

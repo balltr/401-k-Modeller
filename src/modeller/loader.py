@@ -100,6 +100,8 @@ def _load_contributions(xl: pd.ExcelFile) -> pd.DataFrame:
     non_inf = df["Match Cap (%)"] != float("inf")
     df.loc[non_inf, "Match Cap (%)"] = df.loc[non_inf, "Match Cap (%)"] / 100
     df["Filing Status"] = df["Filing Status"].str.strip()
+    if "Target Net Take-Home ($)" not in df.columns:
+        df["Target Net Take-Home ($)"] = float("nan")
     return df.set_index("Year")
 
 
@@ -136,7 +138,7 @@ def _load_withdrawals(xl: pd.ExcelFile) -> pd.DataFrame:
     """
     df = xl.parse("Withdrawals")
     df.columns = df.columns.str.strip()
-    df = df.rename(columns={"Withdrawl ($)": "Withdrawal ($)"})
+
     df["Traditional Bracket Limit (%)"] = df["Traditional Bracket Limit (%)"].fillna(22) / 100
     df["Filing Status"] = df["Filing Status"].str.strip()
     return df.set_index("Year")

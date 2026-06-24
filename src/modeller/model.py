@@ -42,9 +42,30 @@ def project(data: dict) -> pd.DataFrame:
         if age >= 50:
             irs_limit += irs_limits.loc[limit_year, "Catch-Up Limit"]
 
-        # Employee contributions — traditional is applied first against the limit
-        trad_contrib = min(salary * trad_pct, irs_limit)
-        roth_contrib = min(salary * roth_pct, max(0, irs_limit - trad_contrib))
+        # Employee contributions
+        target_take_home = c.get("Target Net Take-Home ($)", float("nan"))
+        if not math.isnan(target_take_home):
+            # Solve for the contribution amount that achieves the target take-home.
+            # Traditional lowers taxable income so we need a binary search.
+            # Roth doesn't affect taxes so it's direct algebra.
+            if trad_pct > 0 and roth_pct == 0:
+                trad_contrib = _solve_trad_contrib(
+                    salary, target_take_home, year, filing_status,
+                    brackets, profile.state_tax_working, irs_limit,
+                )
+                roth_contrib = 0.0
+            elif roth_pct > 0 and trad_pct == 0:
+                tax_full = tax_module.calculate_tax(
+                    salary, year, filing_status, brackets, profile.state_tax_working
+                )
+                roth_contrib = max(0.0, min(salary - tax_full - target_take_home, irs_limit))
+                trad_contrib = 0.0
+            else:
+                trad_contrib = min(salary * trad_pct, irs_limit)
+                roth_contrib = min(salary * roth_pct, max(0, irs_limit - trad_contrib))
+        else:
+            trad_contrib = min(salary * trad_pct, irs_limit)
+            roth_contrib = min(salary * roth_pct, max(0, irs_limit - trad_contrib))
 
         # Employer match goes into the traditional balance.
         # No cap (inf) → full match regardless of employee contribution.
@@ -91,6 +112,8 @@ def project(data: dict) -> pd.DataFrame:
         years_elapsed = year - start_year
         real_total = total_balance / (1 + profile.inflation_rate) ** years_elapsed
 
+        net_take_home = salary - trad_contrib - roth_contrib - tax_owed
+
         rows.append({
             "Year": year,
             "Age": age,
@@ -98,6 +121,7 @@ def project(data: dict) -> pd.DataFrame:
             "Traditional Contrib": trad_contrib,
             "Roth Contrib": roth_contrib,
             "Employer Match": employer_match,
+            "Net Take-Home": net_take_home,
             "Taxable Income": taxable_income,
             "Tax Owed": tax_owed,
             "Conversion Amount": conversion_amount,
@@ -143,8 +167,7 @@ def project_retirement(accumulation: pd.DataFrame, data: dict) -> pd.DataFrame:
             break
 
         w = withdrawals.loc[year]
-        target = float(w["Withdrawal ($)"])
-        gross_withdrawal = min(target, total)
+        target_net = float(w["Take-Home Income ($)"])
         filing_status = w["Filing Status"]
         bracket_limit = w["Traditional Bracket Limit (%)"]
 
@@ -153,17 +176,18 @@ def project_retirement(accumulation: pd.DataFrame, data: dict) -> pd.DataFrame:
             bracket_limit, year, filing_status, brackets
         )
 
-        # Step 1: fill low brackets with Traditional up to the ceiling
-        trad_withdrawal = min(trad_balance, trad_ceiling, gross_withdrawal)
+        # Solve for the gross withdrawal that delivers target_net after taxes.
+        gross_withdrawal = min(
+            _solve_gross_for_net_target(
+                target_net, trad_balance, trad_ceiling, roth_balance,
+                year, filing_status, brackets, profile.state_tax_retirement,
+            ),
+            total,
+        )
 
-        # Step 2: cover the remainder with Roth (tax-free)
-        roth_withdrawal = min(roth_balance, gross_withdrawal - trad_withdrawal)
-
-        # Step 3: if Roth can't cover the rest, take more Traditional at higher rates
-        still_needed = gross_withdrawal - trad_withdrawal - roth_withdrawal
-        if still_needed > 0:
-            extra_trad = min(still_needed, trad_balance - trad_withdrawal)
-            trad_withdrawal += extra_trad
+        trad_withdrawal, roth_withdrawal = _split_withdrawal(
+            gross_withdrawal, trad_balance, trad_ceiling, roth_balance
+        )
 
         tax = tax_module.calculate_tax(
             trad_withdrawal, year, filing_status, brackets, profile.state_tax_retirement
@@ -195,6 +219,69 @@ def project_retirement(accumulation: pd.DataFrame, data: dict) -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows).set_index("Year")
+
+
+def _split_withdrawal(
+    gross: float,
+    trad_balance: float,
+    trad_ceiling: float,
+    roth_balance: float,
+) -> tuple:
+    """Apply bracket-aware Trad/Roth split. Returns (trad_withdrawal, roth_withdrawal)."""
+    trad_w = min(trad_balance, trad_ceiling, gross)
+    roth_w = min(roth_balance, gross - trad_w)
+    still_needed = gross - trad_w - roth_w
+    if still_needed > 0:
+        trad_w += min(still_needed, trad_balance - trad_w)
+    return trad_w, roth_w
+
+
+def _solve_gross_for_net_target(
+    target_net: float,
+    trad_balance: float,
+    trad_ceiling: float,
+    roth_balance: float,
+    year: int,
+    filing_status: str,
+    brackets,
+    state_rate: float,
+) -> float:
+    """Binary search: find the gross withdrawal that yields target_net after tax."""
+    lo, hi = 0.0, trad_balance + roth_balance
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        trad_w, roth_w = _split_withdrawal(mid, trad_balance, trad_ceiling, roth_balance)
+        net = trad_w + roth_w - tax_module.calculate_tax(trad_w, year, filing_status, brackets, state_rate)
+        if net < target_net:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def _solve_trad_contrib(
+    salary: float,
+    target_take_home: float,
+    year: int,
+    filing_status: str,
+    brackets,
+    state_rate: float,
+    irs_limit: float,
+) -> float:
+    """Binary search for the Traditional contribution that hits target_take_home.
+
+    Traditional contributions reduce taxable income, so there's no closed-form
+    solution across bracket boundaries. 60 iterations gives sub-cent precision.
+    """
+    lo, hi = 0.0, min(salary, irs_limit)
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        tax = tax_module.calculate_tax(salary - mid, year, filing_status, brackets, state_rate)
+        if salary - mid - tax > target_take_home:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 def _closest_year(year: int, index: pd.Index) -> int:
