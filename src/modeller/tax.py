@@ -63,6 +63,29 @@ def _federal_tax(
     return tax
 
 
+def max_income_in_bracket(
+    rate_limit: float,
+    year: int,
+    filing_status: str,
+    brackets: pd.DataFrame,
+) -> float:
+    """Return the income ceiling of the highest bracket whose rate is at or
+    below rate_limit. Used to find how much Traditional can be withdrawn before
+    crossing into a bracket the caller wants to avoid.
+
+    Returns float('inf') if rate_limit is at or above the top bracket rate.
+    """
+    rows = _brackets_for_year(year, filing_status, brackets)
+    ceiling = 0.0
+    for _, row in rows.iterrows():
+        if row["Rate (%)"] <= rate_limit:
+            c = row["Bracket Ceiling"]
+            ceiling = float("inf") if pd.isna(c) else float(c)
+        else:
+            break
+    return ceiling
+
+
 def _brackets_for_year(
     year: int,
     filing_status: str,

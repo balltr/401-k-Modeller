@@ -12,6 +12,7 @@ _REQUIRED_SHEETS = {
     "Tax Brackets",
     "IRS Limits",
     "Conversions",
+    "Withdrawals",
 }
 
 _REQUIRED_PROFILE_FIELDS = {
@@ -24,6 +25,7 @@ _REQUIRED_PROFILE_FIELDS = {
     "Account for Inflation",
     "State Tax Rate Working (%)",
     "State Tax Rate Retirement (%)",
+    "End Age",
 }
 
 
@@ -38,11 +40,12 @@ class Profile:
     account_for_inflation: bool
     state_tax_working: float    # decimal
     state_tax_retirement: float # decimal
+    end_age: int
 
 
 def load(path: str | Path) -> dict:
     """Read the Excel workbook and return a dict with keys:
-    profile, contributions, tax_brackets, irs_limits, conversions.
+    profile, contributions, tax_brackets, irs_limits, conversions, withdrawals.
     """
     xl = pd.ExcelFile(Path(path))
 
@@ -56,6 +59,7 @@ def load(path: str | Path) -> dict:
         "tax_brackets":  _load_tax_brackets(xl),
         "irs_limits":    _load_irs_limits(xl),
         "conversions":   _load_conversions(xl),
+        "withdrawals":   _load_withdrawals(xl),
     }
 
 
@@ -77,6 +81,7 @@ def _load_profile(xl: pd.ExcelFile) -> Profile:
         account_for_inflation=str(raw["Account for Inflation"]).strip().lower() == "yes",
         state_tax_working=float(raw["State Tax Rate Working (%)"]) / 100,
         state_tax_retirement=float(raw["State Tax Rate Retirement (%)"]) / 100,
+        end_age=int(raw["End Age"]),
     )
 
 
@@ -122,3 +127,16 @@ def _load_conversions(xl: pd.ExcelFile) -> pd.DataFrame:
     df = xl.parse("Conversions")
     df.columns = df.columns.str.strip()
     return df
+
+
+def _load_withdrawals(xl: pd.ExcelFile) -> pd.DataFrame:
+    """Returns a DataFrame indexed by Year.
+    Traditional Bracket Limit (%) is converted from e.g. 22 → 0.22.
+    Missing bracket limits default to 22% (standard tax-efficient threshold).
+    """
+    df = xl.parse("Withdrawals")
+    df.columns = df.columns.str.strip()
+    df = df.rename(columns={"Withdrawl ($)": "Withdrawal ($)"})
+    df["Traditional Bracket Limit (%)"] = df["Traditional Bracket Limit (%)"].fillna(22) / 100
+    df["Filing Status"] = df["Filing Status"].str.strip()
+    return df.set_index("Year")

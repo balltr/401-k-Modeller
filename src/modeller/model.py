@@ -111,6 +111,92 @@ def project(data: dict) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("Year")
 
 
+def project_retirement(accumulation: pd.DataFrame, data: dict) -> pd.DataFrame:
+    """Model year-by-year withdrawals from retirement through profile.end_year.
+
+    Each year the algorithm fills the lowest tax brackets with Traditional
+    withdrawals first, then covers any remainder with tax-free Roth. If Roth
+    runs dry, additional Traditional is taken at whatever rate applies.
+    """
+    profile = data["profile"]
+    withdrawals = data["withdrawals"]
+    brackets = data["tax_brackets"]
+
+    last = accumulation.iloc[-1]
+    trad_balance = last["Traditional Balance"]
+    roth_balance = last["Roth Balance"]
+    accum_start = int(accumulation.index.min())
+
+    # Derive the end year from end_age: retirement year is the year after the
+    # last accumulation year, then count forward from retirement_age to end_age.
+    retirement_year = int(accumulation.index.max()) + 1
+    end_year = retirement_year + (profile.end_age - profile.retirement_age)
+
+    rows = []
+
+    for year in withdrawals.index:
+        if year > end_year:
+            break
+
+        total = trad_balance + roth_balance
+        if total <= 0:
+            break
+
+        w = withdrawals.loc[year]
+        target = float(w["Withdrawal ($)"])
+        gross_withdrawal = min(target, total)
+        filing_status = w["Filing Status"]
+        bracket_limit = w["Traditional Bracket Limit (%)"]
+
+        # How much Traditional can we take before crossing the bracket limit?
+        trad_ceiling = tax_module.max_income_in_bracket(
+            bracket_limit, year, filing_status, brackets
+        )
+
+        # Step 1: fill low brackets with Traditional up to the ceiling
+        trad_withdrawal = min(trad_balance, trad_ceiling, gross_withdrawal)
+
+        # Step 2: cover the remainder with Roth (tax-free)
+        roth_withdrawal = min(roth_balance, gross_withdrawal - trad_withdrawal)
+
+        # Step 3: if Roth can't cover the rest, take more Traditional at higher rates
+        still_needed = gross_withdrawal - trad_withdrawal - roth_withdrawal
+        if still_needed > 0:
+            extra_trad = min(still_needed, trad_balance - trad_withdrawal)
+            trad_withdrawal += extra_trad
+
+        tax = tax_module.calculate_tax(
+            trad_withdrawal, year, filing_status, brackets, profile.state_tax_retirement
+        )
+        net_withdrawal = trad_withdrawal + roth_withdrawal - tax
+
+        # Remaining balances grow after withdrawal
+        trad_balance = (trad_balance - trad_withdrawal) * (1 + profile.annual_return)
+        roth_balance = (roth_balance - roth_withdrawal) * (1 + profile.annual_return)
+        total_balance = trad_balance + roth_balance
+
+        years_elapsed = year - accum_start
+        real_total = total_balance / (1 + profile.inflation_rate) ** years_elapsed
+        real_net = net_withdrawal / (1 + profile.inflation_rate) ** years_elapsed
+
+        rows.append({
+            "Year": year,
+            "Age": int(w["Age"]) if "Age" in withdrawals.columns else None,
+            "Gross Withdrawal": gross_withdrawal,
+            "Traditional Withdrawal": trad_withdrawal,
+            "Roth Withdrawal": roth_withdrawal,
+            "Tax Owed": tax,
+            "Net Withdrawal": net_withdrawal,
+            "Real Net Withdrawal": real_net,
+            "Traditional Balance": trad_balance,
+            "Roth Balance": roth_balance,
+            "Total Balance": total_balance,
+            "Real Total Balance": real_total,
+        })
+
+    return pd.DataFrame(rows).set_index("Year")
+
+
 def _closest_year(year: int, index: pd.Index) -> int:
     """Return the most recent available year at or before `year`."""
     valid = [y for y in index if y <= year]
