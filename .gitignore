@@ -1,0 +1,40 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# virtual environments
+.venv/
+venv/
+
+# secrets
+.env
+
+# editor settings
+.vscode/
+
+# project-specific data files
+*.xlsx
+!templates/contribution_template.xlsx
+
+# macOS
+.DS_Store
+
+# testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# type checking & linting
+.mypy_cache/
+.ruff_cache/
+
+# packaging
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# logs
+*.log

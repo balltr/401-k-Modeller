@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "401k-modeller"
+version = "0.1.0"
+description = "A 401(k) retirement savings modeler"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "openpyxl",
+    "matplotlib",
+    "plotly",
+]
+
+[project.optional-dependencies]
+# Install dev dependencies with: pip install -e ".[dev]"
+dev = [
+    "pytest",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modeller"]
+
+[tool.pytest.ini_options]
+# pytest looks for tests in the tests/ folder automatically
+testpaths = ["tests"]
